@@ -13,8 +13,8 @@ urls = (
     '/signup', 'Signup',
     '/login', 'Login',
     '/logout', 'Logout',
-    '/?([a-z]+)?', 'WikiPage',
-    '/_edit/?([a-z]+)?', 'EditPage', 
+    '/?([a-zA-Z]+)?', 'WikiPage',
+    '/_edit/?([a-zA-Z]+)?', 'EditPage', 
 )
 
 def render_template(template_name, **context):
@@ -148,7 +148,7 @@ class Signup(Handler):
                           password_hash=password_hash, signup_date=now(), user_email=user_email)
             new_cookie_val = make_secure_val(str(user_id))
             web.setcookie('user_id', new_cookie_val)  
-            raise web.seeother('/welcome')
+            raise web.redirect('/')
 
 class Login(Handler):
 
@@ -164,11 +164,11 @@ class Login(Handler):
         
         account = list(db.select('users', where="user_name='%s'" % user_username))
 
-        if account[0].get('password_hash') == hash_str(user_password):
+        if account and account[0].get('password_hash') == hash_str(user_password):
             user_id = account[0].get('user_id')
             new_cookie_val = make_secure_val(str(user_id))
             web.setcookie('user_id', new_cookie_val)
-            raise web.seeother('/welcome')
+            raise web.redirect('/')
         else:
             error = 'Invalid Login'
             return self.render('login.html', error=error)
@@ -177,7 +177,7 @@ class Logout(Handler):
 
     def GET(self):
         web.setcookie('user_id', "")
-        raise web.seeother('/signup')
+        raise web.redirect('/')
 
 class WikiPage(Handler):
 
@@ -194,13 +194,19 @@ class WikiPage(Handler):
                 #Logged in user
                 wiki = list(db.select('wiki', where="name='%s'" % path))
                 if wiki:
-                    content = wiki[0].get('content')
+                    content = wiki[-1].get('content')
                     return self.render('wiki.html', username=username, content=content, 
                                        name=path, edit="edit")
                 else:
-                    raise web.seeother('/_edit%s' % path)
+                    raise web.redirect('/_edit%s' % path, '302')
+        else:
+            content = ""
+            wiki = list(db.select('wiki', where="name='%s'" % path))
+            if wiki:
+                content = wiki[-1].get('content')
+                return self.render('wiki.html', content=content)
             else:
-                return self.render('wiki.html')
+                raise web.redirect('/login')
 
 class EditPage(Handler):
 
@@ -220,10 +226,10 @@ class EditPage(Handler):
                 else:
                     wiki = list(db.select('wiki', where="name='/'"))
                 if wiki:
-                    content = wiki[0].get('content')
+                    content = wiki[-1].get('content')
                 return self.render('edit.html', username=username, content=content)
-            else:
-                raise web.seeother('/login')
+        else:
+            raise web.redirect('/login')
 
     def POST(self, page_name):
         user_id_str = web.cookies().get('user_id')
@@ -234,12 +240,13 @@ class EditPage(Handler):
                 # account = list(db.select('users', where="user_id='%s'" % user_id))
                 # username = account[0].get('user_name')
                 data = web.input()
+                content = data.get('content')
                 name = '/'
                 if page_name:
                     name += page_name
-                content = data.get('content')
+                
                 a = db.insert('wiki', name=name, content=content)
-                raise web.seeother(name)
+                raise web.redirect(name)
 
 if __name__ == "__main__":
     app = web.application(urls, globals())
